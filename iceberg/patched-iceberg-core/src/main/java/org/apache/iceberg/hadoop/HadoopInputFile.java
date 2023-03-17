@@ -27,9 +27,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.FutureDataInputStreamBuilder;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.util.functional.FutureIO;
 import org.apache.iceberg.encryption.NativeFileCryptoParameters;
 import org.apache.iceberg.encryption.NativelyEncryptedFile;
 import org.apache.iceberg.exceptions.NotFoundException;
@@ -187,14 +185,15 @@ public class HadoopInputFile implements InputFile, NativelyEncryptedFile {
   @Override
   public SeekableInputStream newStream() {
     try {
-      FutureDataInputStreamBuilder fsBuilder = fs.openFile(path);
-      if (length != null) {
-        LOG.debug("Using fs.option.openfile.length as {} for {}", length, location);
-        fsBuilder.opt("fs.option.openfile.length", length);
-      }
-      LOG.debug("Explicitly using fs.s3a.experimental.input.fadvise as normal for {}", location);
-      return HadoopStreams.wrap(
-          FutureIO.awaitFuture(fsBuilder.opt("fs.s3a.experimental.input.fadvise", "normal").build()));
+//      FutureDataInputStreamBuilder fsBuilder = fs.openFile(path);
+//      if (length != null) {
+//        LOG.debug("Using fs.option.openfile.length as {} for {}", length, location);
+//        fsBuilder.opt("fs.option.openfile.length", length);
+//      }
+//      LOG.debug("Explicitly using fs.s3a.experimental.input.fadvise as normal for {}", location);
+//      return HadoopStreams.wrap(
+//          FutureIO.awaitFuture(fsBuilder.opt("fs.s3a.experimental.input.fadvise", "normal").build()));
+      return HadoopStreams.wrap(fs.open(path));
     } catch (FileNotFoundException e) {
       throw new NotFoundException(e, "Failed to open input stream for file: %s", path);
     } catch (IOException e) {
