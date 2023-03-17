@@ -504,7 +504,7 @@ public class BasicStatsNoJobTask implements IStatsProcessor {
           statsRR = (StatsProvidingRecordReader) recordReader;
           final FileStats fileStats =
               new FileStats(statsRR.getStats().getRawDataSize(), statsRR.getStats().getRowCount(), file.getLen(),
-                  file.isErasureCoded());
+                  false);
           return fileStats;
         } else {
           throw new HiveException(String.format("Unexpected file found during reading footers for: %s ", file));

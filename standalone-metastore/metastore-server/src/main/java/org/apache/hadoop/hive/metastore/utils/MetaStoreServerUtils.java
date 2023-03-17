@@ -489,9 +489,9 @@ public class MetaStoreServerUtils {
       if (!status.isDir()) {
         tableSize += status.getLen();
         numFiles += 1;
-        if (status.isErasureCoded()) {
-          numErasureCodedFiles++;
-        }
+//        if (status.isErasureCoded()) {
+//          numErasureCodedFiles++;
+//        }
       }
     }
     params.put(StatsSetupConst.NUM_FILES, Integer.toString(numFiles));

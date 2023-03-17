@@ -150,9 +150,9 @@ public abstract class ShowTableStatusFormatter {
       }
 
       fileData.numOfFiles++;
-      if (entryStatus.isErasureCoded()) {
-        fileData.numOfErasureCodedFiles++;
-      }
+//      if (entryStatus.isErasureCoded()) {
+//        fileData.numOfErasureCodedFiles++;
+//      }
 
       long fileLength = entryStatus.getLen();
       fileData.totalFileSize += fileLength;
