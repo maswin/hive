@@ -80,6 +80,9 @@ import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.hadoop.hive.ql.Context.Operation.OTHER;
+import static org.apache.hadoop.hive.ql.security.authorization.HiveCustomStorageHandlerUtils.setWriteOperation;
+
 public class HCatUtil {
 
   private static final Logger LOG = LoggerFactory.getLogger(HCatUtil.class);
@@ -494,6 +497,7 @@ public class HCatUtil {
     props.put(serdeConstants.SERIALIZATION_LIB,storageHandler.getSerDeClass().getName());
     TableDesc tableDesc = new TableDesc(storageHandler.getInputFormatClass(),
       IgnoreKeyTextOutputFormat.class,props);
+    setWriteOperation(conf, tableDesc.getFullTableName(), OTHER);
     if (tableDesc.getJobProperties() == null)
       tableDesc.setJobProperties(new HashMap<String, String>());
     for (Map.Entry<String, String> el : conf) {
@@ -506,6 +510,7 @@ public class HCatUtil {
         outputJobInfo.getDatabaseName()+ "." + outputJobInfo.getTableName());
 
     Map<String, String> jobProperties = new HashMap<String, String>();
+    JobConf jobConf = new JobConf();
     try {
       tableDesc.getJobProperties().put(
         HCatConstants.HCAT_KEY_OUTPUT_INFO,
@@ -513,6 +518,8 @@ public class HCatUtil {
 
       storageHandler.configureOutputJobProperties(tableDesc,
         jobProperties);
+
+      storageHandler.configureJobConf(tableDesc, jobConf);
 
       Map<String, String> tableJobProperties = tableDesc.getJobProperties();
       if (tableJobProperties != null) {
@@ -527,6 +534,9 @@ public class HCatUtil {
         }
       }
       for (Map.Entry<String, String> el : jobProperties.entrySet()) {
+        conf.set(el.getKey(), el.getValue());
+      }
+      for (Map.Entry<String, String> el : jobConf) {
         conf.set(el.getKey(), el.getValue());
       }
     } catch (IOException e) {

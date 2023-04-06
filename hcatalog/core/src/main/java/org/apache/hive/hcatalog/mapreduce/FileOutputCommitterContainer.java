@@ -21,13 +21,10 @@ package org.apache.hive.hcatalog.mapreduce;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 
+import jdk.nashorn.internal.scripts.JO;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -45,7 +42,9 @@ import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
+import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.HiveStorageHandler;
+import org.apache.hadoop.hive.ql.metadata.HiveUtils;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.mapred.JobConf;
@@ -236,6 +235,10 @@ class FileOutputCommitterContainer extends OutputCommitterContainer {
 
   @Override
   public void commitJob(JobContext jobContext) throws IOException {
+    if (checkAndCommitNatively(jobContext)) {
+      cancelDelegationTokens(jobContext);
+      return;
+    }
     if (dynamicPartitioningUsed) {
       discoverPartitions(jobContext);
       // Commit each partition so it gets moved out of the job work
@@ -271,6 +274,23 @@ class FileOutputCommitterContainer extends OutputCommitterContainer {
     // Commit has succeeded (since no exceptions have been thrown.)
     // Safe to cancel delegation tokens now.
     cancelDelegationTokens(jobContext);
+  }
+
+  private boolean checkAndCommitNatively(JobContext jobContext) throws IOException {
+    StorerInfo storerInfo = jobInfo.getTableInfo().getStorerInfo();
+    HiveStorageHandler storageHandler = HCatUtil.getStorageHandler(jobContext.getConfiguration(), storerInfo);
+    Properties commitProperties = new Properties(storerInfo.getProperties());
+    if (storageHandler != null) {
+      if (storageHandler.commitInMoveTask()) {
+        try {
+          storageHandler.storageHandlerCommit(commitProperties, false);
+        } catch (HiveException e) {
+          throw new IOException("Unable to commit table", e);
+        }
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override
