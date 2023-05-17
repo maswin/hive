@@ -190,6 +190,7 @@ public class TezProcessor extends AbstractLogicalIOProcessor {
     // Setting the id in jobconf helps to have the similar dir name as MR
     StringBuilder taskAttemptIdBuilder = new StringBuilder("attempt_");
     taskAttemptIdBuilder.append(processorContext.getApplicationId().getClusterTimestamp())
+        .append(processorContext.getTaskVertexIndex())
         .append("_")
         .append(jobIdFormat.format(processorContext.getApplicationId().getId()))
         .append("_");
