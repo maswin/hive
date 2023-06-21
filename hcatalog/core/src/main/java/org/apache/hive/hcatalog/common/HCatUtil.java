@@ -50,6 +50,8 @@ import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.security.DelegationTokenIdentifier;
+import org.apache.hadoop.hive.ql.Context;
+import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat;
 import org.apache.hadoop.hive.ql.metadata.HiveStorageHandler;
@@ -79,6 +81,8 @@ import org.apache.hive.hcatalog.mapreduce.StorerInfo;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.hadoop.hive.ql.security.authorization.HiveCustomStorageHandlerUtils.setWriteOperation;
 
 public class HCatUtil {
 
@@ -506,6 +510,8 @@ public class HCatUtil {
         outputJobInfo.getDatabaseName()+ "." + outputJobInfo.getTableName());
 
     Map<String, String> jobProperties = new HashMap<String, String>();
+    JobConf jobConf = new JobConf(false);
+    jobConf.addResource(conf);
     try {
       tableDesc.getJobProperties().put(
         HCatConstants.HCAT_KEY_OUTPUT_INFO,
@@ -513,6 +519,8 @@ public class HCatUtil {
 
       storageHandler.configureOutputJobProperties(tableDesc,
         jobProperties);
+      storageHandler.configureJobConf(tableDesc, jobConf);
+      setWriteOperation(conf, tableDesc.getFullTableName(), Context.Operation.OTHER);
 
       Map<String, String> tableJobProperties = tableDesc.getJobProperties();
       if (tableJobProperties != null) {
@@ -526,8 +534,22 @@ public class HCatUtil {
           }
         }
       }
+      for (Map.Entry<String, String> el : jobConf) {
+        conf.set(el.getKey(), el.getValue());
+      }
       for (Map.Entry<String, String> el : jobProperties.entrySet()) {
         conf.set(el.getKey(), el.getValue());
+      }
+      // Commit Iceberg job in Tez AM
+      String outputCommitter = conf.get("mapred.output.committer.class");
+      if (outputCommitter != null && outputCommitter.contains("HiveIcebergNoJobCommitter")) {
+        String pigScriptId = conf.get("pig.script.id");
+        if (pigScriptId == null) {
+          conf.set(HiveConf.ConfVars.HIVEQUERYID.varname, pigScriptId);
+        } else {
+          conf.set(HiveConf.ConfVars.HIVEQUERYID.varname, "PIG-QUERY");
+        }
+        conf.set("mapred.output.committer.class", "org.apache.iceberg.mr.hive.HiveIcebergOutputCommitter");
       }
     } catch (IOException e) {
       throw new IllegalStateException(
