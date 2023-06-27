@@ -545,9 +545,9 @@ public class HCatUtil {
       if (outputCommitter != null && outputCommitter.contains("HiveIcebergNoJobCommitter")) {
         String pigScriptId = conf.get("pig.script.id");
         if (pigScriptId == null) {
-          conf.set(HiveConf.ConfVars.HIVEQUERYID.varname, pigScriptId);
-        } else {
           conf.set(HiveConf.ConfVars.HIVEQUERYID.varname, "PIG-QUERY");
+        } else {
+          conf.set(HiveConf.ConfVars.HIVEQUERYID.varname, pigScriptId);
         }
         conf.set("mapred.output.committer.class", "org.apache.iceberg.mr.hive.HiveIcebergOutputCommitter");
       }

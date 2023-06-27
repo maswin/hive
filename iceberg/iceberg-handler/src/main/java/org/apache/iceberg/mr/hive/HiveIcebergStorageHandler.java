@@ -155,8 +155,8 @@ public class HiveIcebergStorageHandler implements HiveStoragePredicateHandler, H
   private static final Logger LOG = LoggerFactory.getLogger(HiveIcebergStorageHandler.class);
 
   private static final String ICEBERG_URI_PREFIX = "iceberg://";
-  private static final Splitter TABLE_NAME_SPLITTER = Splitter.on("..");
   private static final String TABLE_NAME_SEPARATOR = "..";
+  private static final Splitter TABLE_NAME_SPLITTER = Splitter.on(TABLE_NAME_SEPARATOR);
   private static final String ICEBERG = "iceberg";
   private static final String PUFFIN = "puffin";
   public static final String COPY_ON_WRITE = "copy-on-write";
@@ -276,8 +276,13 @@ public class HiveIcebergStorageHandler implements HiveStoragePredicateHandler, H
       Preconditions.checkArgument(!tableName.contains(TABLE_NAME_SEPARATOR),
           "Can not handle table " + tableName + ". Its name contains '" + TABLE_NAME_SEPARATOR + "'");
       String tables = jobConf.get(InputFormatConfig.OUTPUT_TABLES);
-      tables = tables == null ? tableName : tables + TABLE_NAME_SEPARATOR + tableName;
-      jobConf.set(InputFormatConfig.OUTPUT_TABLES, tables);
+      if (tables == null) {
+        jobConf.set(InputFormatConfig.OUTPUT_TABLES, tableName);
+      } else {
+        tables = TABLE_NAME_SPLITTER.splitToStream(tables).anyMatch(x -> x.equals(tableName)) ?
+                tables : tables + TABLE_NAME_SEPARATOR + tableName;
+        jobConf.set(InputFormatConfig.OUTPUT_TABLES, tables);
+      }
 
       String catalogName = tableDesc.getProperties().getProperty(InputFormatConfig.CATALOG_NAME);
       if (catalogName != null) {
