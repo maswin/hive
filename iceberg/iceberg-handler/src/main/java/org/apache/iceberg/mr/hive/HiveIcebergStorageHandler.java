@@ -155,8 +155,8 @@ public class HiveIcebergStorageHandler implements HiveStoragePredicateHandler, H
   private static final Logger LOG = LoggerFactory.getLogger(HiveIcebergStorageHandler.class);
 
   private static final String ICEBERG_URI_PREFIX = "iceberg://";
-  private static final Splitter TABLE_NAME_SPLITTER = Splitter.on("..");
   private static final String TABLE_NAME_SEPARATOR = "..";
+  private static final Splitter TABLE_NAME_SPLITTER = Splitter.on(TABLE_NAME_SEPARATOR);
   private static final String ICEBERG = "iceberg";
   private static final String PUFFIN = "puffin";
   public static final String COPY_ON_WRITE = "copy-on-write";
@@ -230,8 +230,6 @@ public class HiveIcebergStorageHandler implements HiveStoragePredicateHandler, H
     overlayTableProperties(conf, tableDesc, map);
     // Until the vectorized reader can handle delete files, let's fall back to non-vector mode for V2 tables
     fallbackToNonVectorizedModeBasedOnProperties(tableDesc.getProperties());
-    // For Tez, setting the committer here is enough to make sure it'll be part of the jobConf
-    map.put("mapred.output.committer.class", HiveIcebergNoJobCommitter.class.getName());
     // For MR, the jobConf is set only in configureJobConf, so we're setting the write key here to detect it over there
     String opType = getOperationType();
     map.put(InputFormatConfig.OPERATION_TYPE_PREFIX + tableDesc.getTableName(), opType);
@@ -239,6 +237,29 @@ public class HiveIcebergStorageHandler implements HiveStoragePredicateHandler, H
     // table-level and skipped only for output tables in HiveIcebergSerde. Properties from the map will be present in
     // the serde config for all tables in the query, not just the output tables, so we can't rely on that in the serde.
     tableDesc.getProperties().put(InputFormatConfig.OPERATION_TYPE_PREFIX + tableDesc.getTableName(), opType);
+
+    if (tableDesc.getProperties() != null &&
+            tableDesc.getProperties().get(InputFormatConfig.OPERATION_TYPE_PREFIX + tableDesc.getTableName()) != null) {
+      String tableName = tableDesc.getTableName();
+      String opKey = InputFormatConfig.OPERATION_TYPE_PREFIX + tableName;
+      // set operation type into job conf too
+      map.put(opKey, tableDesc.getProperties().getProperty(opKey));
+      Preconditions.checkArgument(!tableName.contains(TABLE_NAME_SEPARATOR),
+              "Can not handle table " + tableName + ". Its name contains '" + TABLE_NAME_SEPARATOR + "'");
+      String tables = map.get(InputFormatConfig.OUTPUT_TABLES);
+      if (tables == null) {
+        map.put(InputFormatConfig.OUTPUT_TABLES, tableName);
+      } else {
+        tables = TABLE_NAME_SPLITTER.splitToStream(tables).anyMatch(x -> x.equals(tableName)) ?
+                tables : tables + TABLE_NAME_SEPARATOR + tableName;
+        map.put(InputFormatConfig.OUTPUT_TABLES, tables);
+      }
+
+      String catalogName = tableDesc.getProperties().getProperty(InputFormatConfig.CATALOG_NAME);
+      if (catalogName != null) {
+        map.put(InputFormatConfig.TABLE_CATALOG_PREFIX + tableName, catalogName);
+      }
+    }
   }
 
   /**
@@ -267,23 +288,6 @@ public class HiveIcebergStorageHandler implements HiveStoragePredicateHandler, H
   @Override
   public void configureJobConf(TableDesc tableDesc, JobConf jobConf) {
     setCommonJobConf(jobConf);
-    if (tableDesc != null && tableDesc.getProperties() != null &&
-        tableDesc.getProperties().get(InputFormatConfig.OPERATION_TYPE_PREFIX + tableDesc.getTableName()) != null) {
-      String tableName = tableDesc.getTableName();
-      String opKey = InputFormatConfig.OPERATION_TYPE_PREFIX + tableName;
-      // set operation type into job conf too
-      jobConf.set(opKey, tableDesc.getProperties().getProperty(opKey));
-      Preconditions.checkArgument(!tableName.contains(TABLE_NAME_SEPARATOR),
-          "Can not handle table " + tableName + ". Its name contains '" + TABLE_NAME_SEPARATOR + "'");
-      String tables = jobConf.get(InputFormatConfig.OUTPUT_TABLES);
-      tables = tables == null ? tableName : tables + TABLE_NAME_SEPARATOR + tableName;
-      jobConf.set(InputFormatConfig.OUTPUT_TABLES, tables);
-
-      String catalogName = tableDesc.getProperties().getProperty(InputFormatConfig.CATALOG_NAME);
-      if (catalogName != null) {
-        jobConf.set(InputFormatConfig.TABLE_CATALOG_PREFIX + tableName, catalogName);
-      }
-    }
     try {
       if (!jobConf.getBoolean(HiveConf.ConfVars.HIVE_IN_TEST_IDE.varname, false)) {
         // For running unit test this won't work as maven surefire CP is different than what we have on a cluster:
@@ -949,6 +953,7 @@ public class HiveIcebergStorageHandler implements HiveStoragePredicateHandler, H
 
   private void setCommonJobConf(JobConf jobConf) {
     jobConf.set("tez.mrreader.config.update.properties", "hive.io.file.readcolumn.names,hive.io.file.readcolumn.ids");
+    jobConf.set("mapred.output.committer.class", HiveIcebergNoJobCommitter.class.getName());
   }
 
   public boolean addDynamicSplitPruningEdge(org.apache.hadoop.hive.ql.metadata.Table table,

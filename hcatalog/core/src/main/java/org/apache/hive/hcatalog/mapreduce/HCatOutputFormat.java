@@ -117,7 +117,8 @@ public class HCatOutputFormat extends HCatBaseOutputFormat {
       if ((idHash = conf.get(HCatConstants.HCAT_OUTPUT_ID_HASH)) == null) {
         idHash = String.valueOf(df.format(Math.random()));
       }
-      conf.set(HCatConstants.HCAT_OUTPUT_ID_HASH,idHash);
+      conf.set(HCatConstants.HCAT_OUTPUT_ID_HASH, idHash);
+      conf.set("iceberg.output.id", idHash);
 
       if (table.getTTable().getPartitionKeysSize() == 0) {
         if ((outputJobInfo.getPartitionValues() != null) && (!outputJobInfo.getPartitionValues().isEmpty())) {
@@ -194,6 +195,7 @@ public class HCatOutputFormat extends HCatBaseOutputFormat {
       outputJobInfo.setMaximumDynamicPartitions(maxDynamicPartitions);
 
       HCatUtil.configureOutputStorageHandler(storageHandler, conf, outputJobInfo);
+//      HCatUtil.configureJobConf(storageHandler, conf, outputJobInfo);
 
       Path tblPath = new Path(table.getTTable().getSd().getLocation());
 

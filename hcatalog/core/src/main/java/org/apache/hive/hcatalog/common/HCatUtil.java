@@ -50,6 +50,7 @@ import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.security.DelegationTokenIdentifier;
+import org.apache.hadoop.hive.ql.Context;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat;
 import org.apache.hadoop.hive.ql.metadata.HiveStorageHandler;
@@ -79,6 +80,8 @@ import org.apache.hive.hcatalog.mapreduce.StorerInfo;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.apache.hadoop.hive.ql.security.authorization.HiveCustomStorageHandlerUtils.setWriteOperation;
 
 public class HCatUtil {
 
@@ -482,6 +485,24 @@ public class HCatUtil {
     return jobProperties;
   }
 
+  public static void configureJobConf(HiveStorageHandler storageHandler,
+                                      Configuration conf,
+                                      OutputJobInfo outputJobInfo) {
+    JobConf jobConf = new JobConf(false);
+    jobConf.addResource(conf);
+    TableDesc tableDesc = getTableDesc(storageHandler, outputJobInfo);
+    storageHandler.configureJobConf(tableDesc, jobConf);
+    setWriteOperation(conf, tableDesc.getFullTableName(), Context.Operation.OTHER);
+    for (Map.Entry<String, String> el : jobConf) {
+      conf.set(el.getKey(), el.getValue());
+    }
+    // Commit Iceberg job in Tez AM
+    String outputCommitter = conf.get("mapred.output.committer.class");
+    if (outputCommitter != null && outputCommitter.contains("HiveIcebergNoJobCommitter")) {
+      conf.set("mapred.output.committer.class", "org.apache.iceberg.mr.hive.HiveIcebergOutputCommitter");
+    }
+  }
+
   @InterfaceAudience.Private
   @InterfaceStability.Evolving
   public static void
@@ -490,10 +511,7 @@ public class HCatUtil {
                   OutputJobInfo outputJobInfo) {
     //TODO replace IgnoreKeyTextOutputFormat with a
     //HiveOutputFormatWrapper in StorageHandler
-    Properties props = outputJobInfo.getTableInfo().getStorerInfo().getProperties();
-    props.put(serdeConstants.SERIALIZATION_LIB,storageHandler.getSerDeClass().getName());
-    TableDesc tableDesc = new TableDesc(storageHandler.getInputFormatClass(),
-      IgnoreKeyTextOutputFormat.class,props);
+    TableDesc tableDesc = getTableDesc(storageHandler, outputJobInfo);
     if (tableDesc.getJobProperties() == null)
       tableDesc.setJobProperties(new HashMap<String, String>());
     for (Map.Entry<String, String> el : conf) {
@@ -526,6 +544,8 @@ public class HCatUtil {
           }
         }
       }
+      String pigScriptId = conf.get("pig.script.id");
+      conf.set(HiveConf.ConfVars.HIVEQUERYID.varname, pigScriptId == null ? "PIG-QUERY" : pigScriptId);
       for (Map.Entry<String, String> el : jobProperties.entrySet()) {
         conf.set(el.getKey(), el.getValue());
       }
@@ -533,6 +553,14 @@ public class HCatUtil {
       throw new IllegalStateException(
         "Failed to configure StorageHandler", e);
     }
+  }
+
+  private static TableDesc getTableDesc(HiveStorageHandler storageHandler, OutputJobInfo outputJobInfo) {
+    Properties props = outputJobInfo.getTableInfo().getStorerInfo().getProperties();
+    props.put(serdeConstants.SERIALIZATION_LIB, storageHandler.getSerDeClass().getName());
+    TableDesc tableDesc = new TableDesc(storageHandler.getInputFormatClass(),
+      IgnoreKeyTextOutputFormat.class,props);
+    return tableDesc;
   }
 
   /**
